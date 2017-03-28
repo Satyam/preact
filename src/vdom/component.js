@@ -17,6 +17,30 @@ import { removeNode } from '../dom/index';
  *	@param {boolean} [opts.render=true]			If `false`, no render will be triggered.
  */
 export function setComponentProps(component, props, opts, context, mountAll) {
+	let promisedProps;
+
+	function mergeProps(newProps) {
+		if (context && context!==component.context) {
+			if (!component.prevContext) component.prevContext = component.context;
+			component.context = context;
+		}
+
+		if (!component.prevProps) component.prevProps = component.props;
+		component.props = Object.assign(props, newProps || {});
+
+		component._disable = false;
+
+		if (opts!==NO_RENDER) {
+			if (opts===SYNC_RENDER || options.syncComponentUpdates!==false || !component.base) {
+				renderComponent(component, SYNC_RENDER, mountAll);
+			}
+			else {
+				enqueueRender(component);
+			}
+		}
+
+		if (component.__ref) component.__ref(component);
+	}
 	if (component._disable) return;
 	component._disable = true;
 
@@ -24,32 +48,17 @@ export function setComponentProps(component, props, opts, context, mountAll) {
 	if ((component.__key = props.key)) delete props.key;
 
 	if (!component.base || mountAll) {
-		if (component.componentWillMount) component.componentWillMount();
+		if (component.componentWillMount) promisedProps = component.componentWillMount();
 	}
 	else if (component.componentWillReceiveProps) {
-		component.componentWillReceiveProps(props, context);
+		promisedProps = component.componentWillReceiveProps(props, context);
 	}
 
-	if (context && context!==component.context) {
-		if (!component.prevContext) component.prevContext = component.context;
-		component.context = context;
+	if (promisedProps && typeof promisedProps.then === 'function') {
+		promisedProps.then(mergeProps);
+	} else {
+		mergeProps();
 	}
-
-	if (!component.prevProps) component.prevProps = component.props;
-	component.props = props;
-
-	component._disable = false;
-
-	if (opts!==NO_RENDER) {
-		if (opts===SYNC_RENDER || options.syncComponentUpdates!==false || !component.base) {
-			renderComponent(component, SYNC_RENDER, mountAll);
-		}
-		else {
-			enqueueRender(component);
-		}
-	}
-
-	if (component.__ref) component.__ref(component);
 }
 
 
